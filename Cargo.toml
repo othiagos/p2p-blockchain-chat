@@ -1,6 +1,12 @@
 [package]
-name = "p2p-blockchain-chat"
+name = "p2p-chat-blockchain"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+md5 = "0.7.0"
+tokio = { version = "1.45.1", features = ["full"] }
+
+[[bin]]
+name = "p2p_chat"
+path = "src/main.rs"
