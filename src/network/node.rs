@@ -47,17 +47,19 @@ impl P2PNode {
 
     pub fn connect_to_peer(&self, peer_addr: &str) {
         let addr = format!("{}:{}", peer_addr, TCP_PORT);
-        match TcpStream::connect(&addr) {
-            Ok(stream) => {
-                logger::info(&format!("Conectado com sucesso ao peer: {}", peer_addr));
-                let node_clone = Arc::new(self.clone_state());
+        let node_clone = Arc::new(self.clone_state());
+        let peer_addr = peer_addr.to_string();
 
-                thread::spawn(move || {
-                    node_clone.handle_peer_connection(stream);
-                });
+        thread::spawn(move || {
+            match TcpStream::connect(&addr) {
+                Ok(stream) => {
+                    logger::info(&format!("Conectado com sucesso ao peer: {}", peer_addr));
+                    let node_clone_inner = Arc::clone(&node_clone);
+                    node_clone_inner.handle_peer_connection(stream);
+                }
+                Err(e) => logger::error(&format!("Falha ao conectar ao peer {}: {}", peer_addr, e)),
             }
-            Err(e) => logger::error(&format!("Falha ao conectar ao peer {}: {}", peer_addr, e)),
-        }
+        });
     }
 
     fn handle_peer_connection(&self, mut stream: TcpStream) {
@@ -108,6 +110,7 @@ impl P2PNode {
         let mut counter = 0;
 
         loop {
+            logger::debug("Enviando pedido de lista de peers");
             thread::sleep(Duration::from_secs(5));
             if stream.write_all(&[MessageType::PeerRequest as u8]).is_err() {
                 break;
@@ -115,6 +118,7 @@ impl P2PNode {
 
             counter += 1;
             if counter >= 12 {
+                logger::debug("Enviando pedido de arquivo de chats");
                 if stream
                     .write_all(&[MessageType::ArchiveRequest as u8])
                     .is_err()
@@ -146,7 +150,7 @@ impl P2PNode {
 
             thread::spawn(move || {
                 let addr: SocketAddr = addr_str.parse().expect("Endereço inválido");
-                match TcpStream::connect_timeout(&addr, Duration::from_secs(5)) {
+                match TcpStream::connect(addr) {
                     Ok(mut stream) => {
                         logger::debug(&format!("Publicando para {}", addr_str));
                         if let Err(e) = stream.write_all(&data_clone) {
@@ -200,10 +204,12 @@ impl P2PNode {
 
     fn handle_peer_list(&self, stream: &mut TcpStream) -> bool {
         logger::debug("Recebido lista de peers");
+
         let mut count_buf = [0u8; 4];
         if stream.read_exact(&mut count_buf).is_err() {
             return false;
         }
+
         let count = u32::from_be_bytes(count_buf) as usize;
 
         let mut received_ips = Vec::with_capacity(count);
