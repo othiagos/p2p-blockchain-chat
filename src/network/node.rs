@@ -12,6 +12,7 @@ use std::time::Duration;
 pub struct P2PNode {
     pub peers: Arc<Mutex<PeerList>>,
     pub archive: Arc<RwLock<Archive>>,
+    pub propagated: Arc<Mutex<bool>>,
 }
 
 impl P2PNode {
@@ -19,6 +20,7 @@ impl P2PNode {
         P2PNode {
             peers: Arc::new(Mutex::new(PeerList::new())),
             archive: Arc::new(RwLock::new(Archive::new())),
+            propagated: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -39,7 +41,7 @@ impl P2PNode {
                             node_clone.handle_peer_connection(stream);
                         });
                     }
-                    Err(e) => logger::error(&format!("Falha ao aceitar conexão: {}", e)),
+                    Err(e) => logger::warn(&format!("Falha ao aceitar conexão: {}", e)),
                 }
             }
         });
@@ -50,15 +52,13 @@ impl P2PNode {
         let node_clone = Arc::new(self.clone_state());
         let peer_addr = peer_addr.to_string();
 
-        thread::spawn(move || {
-            match TcpStream::connect(&addr) {
-                Ok(stream) => {
-                    logger::info(&format!("Conectado com sucesso ao peer: {}", peer_addr));
-                    let node_clone_inner = Arc::clone(&node_clone);
-                    node_clone_inner.handle_peer_connection(stream);
-                }
-                Err(e) => logger::error(&format!("Falha ao conectar ao peer {}: {}", peer_addr, e)),
+        thread::spawn(move || match TcpStream::connect(&addr) {
+            Ok(stream) => {
+                logger::info(&format!("Conectado com sucesso ao peer: {}", peer_addr));
+                let node_clone_inner = Arc::clone(&node_clone);
+                node_clone_inner.handle_peer_connection(stream);
             }
+            Err(e) => logger::warn(&format!("Falha ao conectar ao peer {}: {}", peer_addr, e)),
         });
     }
 
@@ -66,7 +66,7 @@ impl P2PNode {
         let peer_addr = match stream.peer_addr() {
             Ok(addr) => addr,
             Err(_) => {
-                logger::error("Conexão terminada antes de identificar o IP do peer");
+                logger::warn("Conexão terminada antes de identificar o IP do peer");
                 return;
             }
         };
@@ -74,11 +74,15 @@ impl P2PNode {
         let peer_ip_u32 = if let IpAddr::V4(ipv4) = peer_addr.ip() {
             u32::from(ipv4)
         } else {
-            return; // Ignora conexões IPv6
+            logger::warn(&format!(
+                "Conexão de peer IPv6 não suportada: {}",
+                peer_addr
+            ));
+            return;
         };
 
         self.peers.lock().unwrap().add_peer(peer_ip_u32);
-        
+
         logger::debug(&format!("Novo peer conectado: {}", peer_addr));
         let node_clone = self.clone_state();
         let stream_clone = stream.try_clone().expect("Falha ao clonar stream TCP");
@@ -107,92 +111,77 @@ impl P2PNode {
     }
 
     fn peer_requester_thread(&self, mut stream: TcpStream) {
-        let mut counter = 0;
 
         loop {
-            logger::debug("Enviando pedido de lista de peers");
             thread::sleep(Duration::from_secs(5));
+
+            logger::debug("Enviando pedido de lista de peers");
             if stream.write_all(&[MessageType::PeerRequest as u8]).is_err() {
                 break;
             }
 
-            counter += 1;
-            if counter >= 12 {
-                logger::debug("Enviando pedido de arquivo de chats");
-                if stream
-                    .write_all(&[MessageType::ArchiveRequest as u8])
-                    .is_err()
-                {
+            logger::debug("Enviando pedido de arquivo de chats");
+            if stream.write_all(&[MessageType::ArchiveRequest as u8]).is_err() {
+                break;
+            }
+
+            if *self.propagated.lock().unwrap() {
+                logger::debug("Propagando arquivo de chats");
+                
+                if !self.handle_archive_request(&mut stream) {
+                    logger::warn("Falha ao propagar arquivo de chats para o peer.");
                     break;
                 }
-                counter = 0;
             }
         }
     }
 
     pub fn publish_archive(&self) {
-        let archive_data = { self.archive.read().unwrap().to_bytes() };
-        let peer_ips = { self.peers.lock().unwrap().get_ips() };
+        let need_more_time = {
+            *self.propagated.lock().unwrap()
+        };
 
-        if peer_ips.is_empty() {
-            return;
+        let mut propagation_time = Duration::from_secs(10);
+        if !need_more_time {
+            *self.propagated.lock().unwrap() = true;
+        } else {
+            propagation_time *= 2;
         }
 
-        logger::info(&format!(
-            "Publicando arquivo atualizado para {} peer(s)",
-            peer_ips.len()
-        ));
-
-        for ip in peer_ips {
-            let ip_addr = Ipv4Addr::from(ip);
-            let addr_str = format!("{}:{}", ip_addr, TCP_PORT);
-            let data_clone = archive_data.clone();
-
-            thread::spawn(move || {
-                let addr: SocketAddr = addr_str.parse().expect("Endereço inválido");
-                match TcpStream::connect(addr) {
-                    Ok(mut stream) => {
-                        logger::debug(&format!("Publicando para {}", addr_str));
-                        if let Err(e) = stream.write_all(&data_clone) {
-                            logger::warn(&format!("Falha ao publicar para {}: {}", addr_str, e));
-                        }
-                    }
-                    Err(e) => {
-                        logger::error(&format!(
-                            "Timeout ou erro ao tentar publicar para {}: {}",
-                            addr_str, e
-                        ));
-                    }
-                }
-            });
-        }
+        let propagated = Arc::clone(&self.propagated);
+        thread::spawn(move || {
+            thread::sleep(propagation_time);
+            logger::debug("Finalizando propagação do arquivo de chats");
+            *propagated.lock().unwrap() = false;
+        });
     }
 
     pub fn clone_state(&self) -> Self {
         P2PNode {
             peers: Arc::clone(&self.peers),
             archive: Arc::clone(&self.archive),
+            propagated: Arc::clone(&self.propagated),
         }
     }
 
     pub fn handle_message(&self, msg_type: MessageType, stream: &mut TcpStream) -> bool {
         match msg_type {
             MessageType::PeerRequest => self.handle_peer_request(stream),
-            MessageType::PeerList => self.handle_peer_list(stream),
+            MessageType::PeerList => self.handle_peer_response(stream),
             MessageType::ArchiveRequest => self.handle_archive_request(stream),
             MessageType::ArchiveResponse => self.handle_archive_response(stream),
         }
     }
 
     fn handle_peer_request(&self, stream: &mut TcpStream) -> bool {
-        logger::debug("Recebido pedido de lista de peers");
+        logger::debug("Enviando lista de peers");
         let peer_list = self.peers.lock().unwrap();
         let response = peer_list.to_bytes();
         stream.write_all(&response).is_ok()
     }
 
     fn handle_archive_request(&self, stream: &mut TcpStream) -> bool {
-        logger::debug("Recebido pedido de arquivo de chats");
+        logger::debug("Enviando arquivo de chats");
         let arch = self.archive.read().unwrap();
         if arch.len() > 0 {
             let response = arch.to_bytes();
@@ -202,8 +191,8 @@ impl P2PNode {
         }
     }
 
-    fn handle_peer_list(&self, stream: &mut TcpStream) -> bool {
-        logger::debug("Recebido lista de peers");
+    fn handle_peer_response(&self, stream: &mut TcpStream) -> bool {
+        logger::debug("Recebendo lista de peers");
 
         let mut count_buf = [0u8; 4];
         if stream.read_exact(&mut count_buf).is_err() {
@@ -235,7 +224,7 @@ impl P2PNode {
     }
 
     fn handle_archive_response(&self, stream: &mut TcpStream) -> bool {
-        logger::debug("Recebido resposta de arquivo de chats");
+        logger::debug("Recebendo arquivo de chats");
         let mut full_data = vec![MessageType::ArchiveResponse as u8];
         let mut count_buf = [0u8; 4];
         if stream.read_exact(&mut count_buf).is_err() {
