@@ -51,11 +51,13 @@ impl Archive {
         if self.chats.is_empty() {
             return true;
         }
+
         for i in 0..self.chats.len() {
             if !self.validate_chat_at_index(i) {
                 return false;
             }
         }
+
         true
     }
 
@@ -74,6 +76,7 @@ impl Archive {
 
         for j in start_index..=index {
             let chat_bytes = self.chats[j].to_bytes();
+
             if j == index {
                 data_to_hash.extend_from_slice(&chat_bytes[..chat_bytes.len() - 16]);
             } else {
@@ -82,6 +85,7 @@ impl Archive {
         }
 
         let calculated_hash = md5::compute(&data_to_hash);
+
         calculated_hash.0 == chat.md5_hash
     }
 
@@ -128,13 +132,16 @@ impl Archive {
                     verification_code,
                     md5_hash: calculated_hash,
                 };
+                
                 self.chats.push(final_chat);
 
-                let verification_code_str = verification_code.iter()
+                let verification_code_str = verification_code
+                    .iter()
                     .map(|b| format!("{:02x}", b))
                     .collect::<String>();
 
-                let md5_hash_str = calculated_hash.iter()
+                let md5_hash_str = calculated_hash
+                    .iter()
                     .map(|b| format!("{:02x}", b))
                     .collect::<String>();
 
@@ -143,10 +150,7 @@ impl Archive {
                     verification_code_str
                 ));
 
-                logger::info(&format!(
-                    "Hash MD5 da mensagem: {}",
-                    md5_hash_str
-                ));
+                logger::info(&format!("Hash MD5 da mensagem: {}", md5_hash_str));
                 return true;
             }
         }

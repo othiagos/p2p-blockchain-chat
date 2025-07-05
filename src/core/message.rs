@@ -3,21 +3,30 @@ use std::convert::From;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MessageType {
     PeerRequest = 0x1,
-    PeerList = 0x2,
+    PeerResponse = 0x2,
     ArchiveRequest = 0x3,
     ArchiveResponse = 0x4,
+    NotificationMessage = 0x5,
 }
 
 impl From<u8> for MessageType {
     fn from(value: u8) -> Self {
         match value {
             0x1 => MessageType::PeerRequest,
-            0x2 => MessageType::PeerList,
+            0x2 => MessageType::PeerResponse,
             0x3 => MessageType::ArchiveRequest,
             0x4 => MessageType::ArchiveResponse,
+            0x5 => MessageType::NotificationMessage,
             _ => panic!("Invalid message type: {}", value),
         }
     }
+}
+
+impl MessageType {
+    pub fn is_valid_message(value: u8) -> bool {
+        (0x1..=0x5).contains(&value)
+    }
+
 }
 
 #[derive(Debug, Clone)]

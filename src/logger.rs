@@ -1,24 +1,25 @@
+use chrono::{DateTime, Utc};
 use colored::Colorize;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::atomic::AtomicBool;
-use std::sync::{Mutex, OnceLock};
-use std::fs::{OpenOptions, File};
+use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
-use chrono::{Utc, DateTime};
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 
-static LOG_LEVEL: AtomicUsize = AtomicUsize::new(LogLevel::Info as usize);
+static LOG_LEVEL: AtomicUsize = AtomicUsize::new(LogLevel::Off as usize);
 static USE_TIME: AtomicBool = AtomicBool::new(true);
 static LOG_FILE: OnceLock<Mutex<Option<File>>> = OnceLock::new();
 
 #[allow(dead_code)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum LogLevel {
     Debug,
     Info,
     Warn,
     Error,
     Fatal,
+    Off,
 }
 
 #[allow(dead_code)]
@@ -28,10 +29,10 @@ pub fn set_log_level(level: LogLevel) {
 
 #[allow(dead_code)]
 pub fn set_log_file(path: &str) -> io::Result<()> {
-
     if let Some(parent) = Path::new(path).parent() {
         std::fs::create_dir_all(parent)?;
     }
+
     let file = OpenOptions::new().create(true).append(true).open(path)?;
     let lock = LOG_FILE.get_or_init(|| Mutex::new(None));
     let mut guard = lock.lock().unwrap();
@@ -49,7 +50,7 @@ fn get_time_string() -> String {
     if !USE_TIME.load(Ordering::SeqCst) {
         return String::new();
     }
-    
+
     let now: DateTime<Utc> = Utc::now();
     now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true) + " "
 }
@@ -65,10 +66,10 @@ fn log_message(level: LogLevel, message: &str) {
         LogLevel::Warn => "[WARN]".yellow(),
         LogLevel::Error => "[ERROR]".red(),
         LogLevel::Fatal => "[FATAL]".on_red().white().bold(),
+        LogLevel::Off => "".into(),
     };
 
     let time_str = get_time_string().dimmed();
-
     let formatted = format!("{}{} {}\n", time_str, level_str, message);
 
     try_log_to_file(level, message, formatted);
@@ -79,7 +80,6 @@ fn try_log_to_file(level: LogLevel, message: &str, formatted: String) {
         let mut guard = lock.lock().unwrap();
 
         if let Some(file) = guard.as_mut() {
-
             let plain = format!(
                 "{}[{}] {}\n",
                 get_time_string(),
@@ -89,6 +89,7 @@ fn try_log_to_file(level: LogLevel, message: &str, formatted: String) {
                     LogLevel::Warn => "WARN",
                     LogLevel::Error => "ERROR",
                     LogLevel::Fatal => "FATAL",
+                    LogLevel::Off => "",
                 },
                 message
             );
