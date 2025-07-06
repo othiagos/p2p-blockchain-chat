@@ -123,11 +123,6 @@ impl P2PNode {
                 logger::warn("Falha ao enviar pedido de arquivo de chats.");
                 break;
             }
-
-            if !self.handle_archive_request(&mut stream) {
-                logger::warn("Falha ao propagar arquivo de chats para o peer.");
-                break;
-            }
         }
     }
 
@@ -214,7 +209,7 @@ impl P2PNode {
         logger::debug("Recebendo arquivo de chats");
         let mut full_data = vec![MessageType::ArchiveResponse as u8];
         let mut count_buf = [0u8; 4];
-        
+
         if stream.read_exact(&mut count_buf).is_err() {
             return false;
         }
@@ -261,7 +256,7 @@ impl P2PNode {
 
     fn handle_notification_message(&self, stream: &mut TcpStream) -> bool {
         let mut len_buf = [0u8; 1];
-        
+
         if stream.read_exact(&mut len_buf).is_err() {
             logger::warn("Falha ao ler tamanho da mensagem de notificação.");
             return false;

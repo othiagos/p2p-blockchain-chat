@@ -58,13 +58,15 @@ fn user_input_loop(node: &P2PNode) {
             "h" | "history" => handle_history(node),
             "p" | "peers" => handle_peers(node),
             "s" | "status" => handle_status(node),
+            "a" | "addpeer" => handle_addpeer(node, args),
+            "f" | "filechat" => handle_filechat(node, args),
             "?" | "help" => print_help(),
             "q" | "quit" => break,
             _ => {
-                println!(
-                    "Comando desconhecido: '{}'. Digite 'help' para ver a lista de comandos.",
-                    command
-                );
+            println!(
+                "Comando desconhecido: '{}'. Digite 'help' para ver a lista de comandos.",
+                command
+            );
             }
         }
     }
@@ -89,7 +91,8 @@ fn handle_history(node: &P2PNode) {
     } else {
         println!("--- Histórico de Chats ({} mensagens) ---", archive.len());
         for (i, chat) in archive.chats.iter().enumerate() {
-            println!("[{}] {}", i, chat.message);
+            let width = archive.len().to_string().len();
+            println!("[{:0w$}] {}", i, chat.message, w = width);
         }
         println!("-------------------------------------------");
     }
@@ -119,12 +122,42 @@ fn handle_status(node: &P2PNode) {
     println!("--------------------");
 }
 
+fn handle_addpeer(node: &P2PNode, args: &[&str]) {
+    if let Some(ip) = args.first() {
+        node.connect_to_peer(ip);
+    } else {
+        println!("Uso: addpeer <ip>");
+    }
+}
+
+fn handle_filechat(node: &P2PNode, args: &[&str]) {
+    if args.is_empty() {
+        eprintln!("Uso: filechat <caminho_do_arquivo>");
+        return;
+    }
+
+    let file_path = args[0];
+    match std::fs::File::open(file_path) {
+        Ok(file) => {
+            let reader = io::BufReader::new(file);
+            for msg in reader.lines().map_while(Result::ok) {
+                handle_chat(node, &[&msg]);
+            }
+        }
+        Err(e) => {
+            eprintln!("Erro ao abrir o arquivo '{}': {}", file_path, e);
+        }
+    }
+}
+
 fn print_help() {
     println!("\nComandos disponíveis:");
-    println!("  chat <mensagem> - Minera e envia uma nova mensagem");
-    println!("  history         - Lista todo o histórico de chats");
-    println!("  peers           - Mostra os peers conectados e conhecidos");
-    println!("  status          - Exibe o status geral do nó");
-    println!("  help            - Mostra esta ajuda");
-    println!("  quit            - Sai do programa\n");
+    println!("  chat <mensagem>         - Minera e envia uma nova mensagem");
+    println!("  history                 - Lista todo o histórico de chats");
+    println!("  peers                   - Mostra os peers conectados e conhecidos");
+    println!("  status                  - Exibe o status geral do nó");
+    println!("  addpeer <ip>            - Adiciona e conecta a um novo peer pelo IP");
+    println!("  filechat <arquivo>      - Envia mensagens de um arquivo texto");
+    println!("  help                    - Mostra esta ajuda");
+    println!("  quit                    - Sai do programa\n");
 }
