@@ -75,7 +75,13 @@ impl Archive {
         let mut data_to_hash = Vec::new();
 
         for j in start_index..=index {
-            let chat_bytes = self.chats[j].to_bytes();
+            let chat = &self.chats[j];
+
+            if !Self::is_valid_message(&chat.message) {
+                return false;
+            }
+
+            let chat_bytes = chat.to_bytes();
 
             if j == index {
                 data_to_hash.extend_from_slice(&chat_bytes[..chat_bytes.len() - 16]);
@@ -98,8 +104,7 @@ impl Archive {
         }
 
         logger::info(&format!(
-            "Minerando código de verificação para a mensagem: '{}'...",
-            message
+            "Minerando código de verificação para a mensagem: '{message}'..."
         ));
 
         let mut rng = rand::rng();
@@ -132,25 +137,24 @@ impl Archive {
                     verification_code,
                     md5_hash: calculated_hash,
                 };
-                
+
                 self.chats.push(final_chat);
 
                 let verification_code_str = verification_code
                     .iter()
-                    .map(|b| format!("{:02x}", b))
+                    .map(|b| format!("{b:02x}"))
                     .collect::<String>();
 
                 let md5_hash_str = calculated_hash
                     .iter()
-                    .map(|b| format!("{:02x}", b))
+                    .map(|b| format!("{b:02x}"))
                     .collect::<String>();
 
                 logger::info(&format!(
-                    "Código de verificação minerado: {}",
-                    verification_code_str
+                    "Código de verificação minerado: {verification_code_str}"
                 ));
 
-                logger::info(&format!("Hash MD5 da mensagem: {}", md5_hash_str));
+                logger::info(&format!("Hash MD5 da mensagem: {md5_hash_str}"));
                 return true;
             }
         }

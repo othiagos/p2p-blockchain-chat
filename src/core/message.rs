@@ -17,7 +17,7 @@ impl From<u8> for MessageType {
             0x3 => MessageType::ArchiveRequest,
             0x4 => MessageType::ArchiveResponse,
             0x5 => MessageType::NotificationMessage,
-            _ => panic!("Invalid message type: {}", value),
+            _ => panic!("Invalid message type: {value}"),
         }
     }
 }

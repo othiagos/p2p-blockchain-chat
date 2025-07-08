@@ -29,7 +29,7 @@ impl P2PNode {
                 TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), TCP_PORT))
                     .expect("Falha ao iniciar o listener TCP");
 
-            logger::info(&format!("Escutando por conexões na porta {}", TCP_PORT));
+            logger::info(&format!("Escutando por conexões na porta {TCP_PORT}"));
 
             for stream in listener.incoming() {
                 match stream {
@@ -40,7 +40,7 @@ impl P2PNode {
                             node_clone.handle_peer_connection(stream);
                         });
                     }
-                    Err(e) => logger::warn(&format!("Falha ao aceitar conexão: {}", e)),
+                    Err(e) => logger::warn(&format!("Falha ao aceitar conexão: {e}")),
                 }
             }
         });
@@ -66,15 +66,14 @@ impl P2PNode {
             u32::from(ipv4)
         } else {
             logger::warn(&format!(
-                "Conexão de peer IPv6 não suportada: {}",
-                peer_addr
+                "Conexão de peer IPv6 não suportada: {peer_addr}"
             ));
             return;
         };
 
         self.peers.lock().unwrap().add_peer(peer_ip_u32);
 
-        logger::debug(&format!("Novo peer conectado: {}", peer_addr));
+        logger::debug(&format!("Novo peer conectado: {peer_addr}"));
         let node_clone = self.clone_state();
         let stream_clone = stream.try_clone().expect("Falha ao clonar stream TCP");
 
@@ -96,7 +95,7 @@ impl P2PNode {
                     }
                 }
                 Err(_) => {
-                    logger::info(&format!("Peer {} desconectado.", peer_addr));
+                    logger::info(&format!("Peer {peer_addr} desconectado."));
                     break;
                 }
             }
@@ -121,6 +120,11 @@ impl P2PNode {
                 .is_err()
             {
                 logger::warn("Falha ao enviar pedido de arquivo de chats.");
+                break;
+            }
+
+            if !self.handle_archive_request(&mut stream) {
+                logger::warn("Falha ao propagar arquivo de chats para o peer.");
                 break;
             }
         }
@@ -191,17 +195,17 @@ impl P2PNode {
     }
 
     pub fn connect_to_peer(&self, peer_addr: &str) {
-        let addr = format!("{}:{}", peer_addr, TCP_PORT);
+        let addr = format!("{peer_addr}:{TCP_PORT}");
         let node_clone = Arc::new(self.clone_state());
         let peer_addr = peer_addr.to_string();
 
         thread::spawn(move || match TcpStream::connect(&addr) {
             Ok(stream) => {
-                logger::info(&format!("Conectado com sucesso ao peer: {}", peer_addr));
+                logger::info(&format!("Conectado com sucesso ao peer: {peer_addr}"));
                 let node_clone_inner = Arc::clone(&node_clone);
                 node_clone_inner.handle_peer_connection(stream);
             }
-            Err(e) => logger::warn(&format!("Falha ao conectar ao peer {}: {}", peer_addr, e)),
+            Err(e) => logger::warn(&format!("Falha ao conectar ao peer {peer_addr}: {e}")),
         });
     }
 
@@ -272,7 +276,7 @@ impl P2PNode {
 
         match String::from_utf8(msg_buf) {
             Ok(msg) => {
-                logger::debug(&format!("Notificação recebida: {}", msg));
+                logger::debug(&format!("Notificação recebida: {msg}"));
                 true
             }
             Err(_) => {

@@ -17,7 +17,7 @@ fn main() {
 
     logger::info("Iniciando Chat P2P com Blockchain...");
     if let Some(peer) = &initial_peer {
-        logger::info(&format!("Tentando conectar ao peer inicial: {}", peer));
+        logger::info(&format!("Tentando conectar ao peer inicial: {peer}"));
     } else {
         logger::info("Nenhum peer inicial especificado. Aguardando conexões...");
     }
@@ -64,8 +64,7 @@ fn user_input_loop(node: &P2PNode) {
             "q" | "quit" => break,
             _ => {
             println!(
-                "Comando desconhecido: '{}'. Digite 'help' para ver a lista de comandos.",
-                command
+                "Comando desconhecido: '{command}'. Digite 'help' para ver a lista de comandos."
             );
             }
         }
@@ -116,9 +115,9 @@ fn handle_status(node: &P2PNode) {
     let peers_count = node.peers.lock().unwrap().get_ips().len();
     let archive_len = node.archive.read().unwrap().len();
     println!("--- Status do Nó ---");
-    println!("Porta TCP: {}", TCP_PORT);
-    println!("Peers conhecidos: {}", peers_count);
-    println!("Mensagens no arquivo: {}", archive_len);
+    println!("Porta TCP: {TCP_PORT}");
+    println!("Peers conhecidos: {peers_count}");
+    println!("Mensagens no arquivo: {archive_len}");
     println!("--------------------");
 }
 
@@ -145,7 +144,7 @@ fn handle_filechat(node: &P2PNode, args: &[&str]) {
             }
         }
         Err(e) => {
-            eprintln!("Erro ao abrir o arquivo '{}': {}", file_path, e);
+            eprintln!("Erro ao abrir o arquivo '{file_path}': {e}");
         }
     }
 }

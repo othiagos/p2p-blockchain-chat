@@ -70,7 +70,7 @@ fn log_message(level: LogLevel, message: &str) {
     };
 
     let time_str = get_time_string().dimmed();
-    let formatted = format!("{}{} {}\n", time_str, level_str, message);
+    let formatted = format!("{time_str}{level_str} {message}\n");
 
     try_log_to_file(level, message, formatted);
 }
@@ -100,7 +100,7 @@ fn try_log_to_file(level: LogLevel, message: &str, formatted: String) {
         }
     }
 
-    print!("{}", formatted);
+    print!("{formatted}");
 }
 
 #[allow(dead_code)]
